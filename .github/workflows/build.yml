@@ -1,0 +1,50 @@
+name: Build UnityDecompiler.exe
+
+on:
+  push:
+    branches: ["**"]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Build everything
+        run: dotnet build UnityDecompiler.sln -c Release
+
+      - name: Publish single-file UnityDecompiler.exe
+        run: dotnet publish src/UnityDecompiler.App/UnityDecompiler.App.csproj -c Release -o publish
+
+      - name: Publish command-line version
+        run: dotnet publish src/UnityDecompiler.Cli/UnityDecompiler.Cli.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -o publish-cli
+
+      - name: Upload UnityDecompiler.exe
+        uses: actions/upload-artifact@v4
+        with:
+          name: UnityDecompiler
+          path: publish/UnityDecompiler.exe
+
+      - name: Upload command-line version
+        uses: actions/upload-artifact@v4
+        with:
+          name: unity-decompiler-cli
+          path: publish-cli/unity-decompiler.exe
+
+      - name: Create GitHub release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            publish/UnityDecompiler.exe
+            publish-cli/unity-decompiler.exe
