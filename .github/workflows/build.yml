@@ -1,4 +1,4 @@
-name: Build UnityDecompiler.exe
+name: Build UnityDecompiler
 
 on:
   push:
@@ -12,6 +12,7 @@ permissions:
 
 jobs:
   build:
+    name: Windows desktop app + CLI
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -48,3 +49,36 @@ jobs:
           files: |
             publish/UnityDecompiler.exe
             publish-cli/unity-decompiler.exe
+
+  server:
+    name: Server (Linux, for VPS)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Build and smoke-test
+        run: |
+          dotnet build UnityDecompiler.sln -c Release
+          dotnet run --project src/UnityDecompiler.Cli -c Release --no-build -- --help
+
+      - name: Publish self-contained Linux server
+        run: dotnet publish src/UnityDecompiler.Server/UnityDecompiler.Server.csproj -c Release -r linux-x64 --self-contained true -p:PublishSingleFile=true -o publish-server
+
+      - name: Package server
+        run: tar -C publish-server -czf unity-decompiler-server-linux-x64.tar.gz .
+
+      - name: Upload server build
+        uses: actions/upload-artifact@v4
+        with:
+          name: unity-decompiler-server-linux-x64
+          path: unity-decompiler-server-linux-x64.tar.gz
+
+      - name: Attach server to release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: unity-decompiler-server-linux-x64.tar.gz

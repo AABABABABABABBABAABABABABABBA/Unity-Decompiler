@@ -25,13 +25,20 @@ public sealed class DecompileOptions
     public bool CopyStreamingAssets { get; init; } = true;
 
     public long MaxStreamingAssetsBytes { get; init; } = 512L * 1024 * 1024;
+
+    /// <summary>Scan the decompiled output for hardcoded credentials and write SECURITY-SCAN.txt.</summary>
+    public bool ScanForSecrets { get; init; } = true;
 }
 
 public sealed record DecompileProgress(string Message, double? Fraction = null, LogLevel Level = LogLevel.Info);
 
 public enum LogLevel { Info, Success, Warning, Error }
 
-public sealed record DecompileResult(UnityGame Game, string OutputDirectory, string? SolutionPath, int AssembliesDecompiled, int AssembliesFailed);
+public sealed record DecompileResult(UnityGame Game, string OutputDirectory, string? SolutionPath, int AssembliesDecompiled, int AssembliesFailed)
+{
+    /// <summary>Hardcoded credentials found in the decompiled output (empty if none or scanning was off).</summary>
+    public IReadOnlyList<SecretFinding> Secrets { get; init; } = Array.Empty<SecretFinding>();
+}
 
 public static class GameDecompiler
 {
@@ -94,10 +101,26 @@ public static class GameDecompiler
             if (options.CopyStreamingAssets && game.DataDirectory != null)
                 CopyStreamingAssets(game, outDir, options.MaxStreamingAssetsBytes, Log);
 
-            WriteGameInfo(game, outDir, ok, failed);
+            IReadOnlyList<SecretFinding> secrets = Array.Empty<SecretFinding>();
+            if (options.ScanForSecrets)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                Log("Scanning the decompiled code for leaked credentials...");
+                secrets = SecretScanner.ScanAndReport(outDir, cancellationToken);
+                if (secrets.Count == 0)
+                    Log("No hardcoded credentials found.", LogLevel.Success);
+                else
+                {
+                    var high = secrets.Count(s => s.Severity == SecretSeverity.High);
+                    Log($"Found {secrets.Count} possible secret(s){(high > 0 ? $", {high} high severity" : "")} - see SECURITY-SCAN.txt.",
+                        high > 0 ? LogLevel.Error : LogLevel.Warning);
+                }
+            }
+
+            WriteGameInfo(game, outDir, ok, failed, secrets);
             Log(failed == 0 ? "Done!" : $"Done, but {failed} assembl{(failed == 1 ? "y" : "ies")} failed.",
                 failed == 0 ? LogLevel.Success : LogLevel.Warning, 1);
-            return new DecompileResult(game, outDir, solution, ok, failed);
+            return new DecompileResult(game, outDir, solution, ok, failed) { Secrets = secrets };
         }
         finally
         {
@@ -300,7 +323,7 @@ public static class GameDecompiler
         }
     }
 
-    private static void WriteGameInfo(UnityGame game, string outDir, int ok, int failed)
+    private static void WriteGameInfo(UnityGame game, string outDir, int ok, int failed, IReadOnlyList<SecretFinding> secrets)
     {
         var sb = new StringBuilder()
             .AppendLine($"Game:            {game.DisplayName}")
@@ -312,6 +335,8 @@ public static class GameDecompiler
             .AppendLine($"Executable:      {game.ExecutablePath ?? "-"}");
         if (game.Backend == ScriptingBackend.Mono)
             sb.AppendLine($"Assemblies:      {ok} decompiled, {failed} failed");
+        if (secrets.Count > 0)
+            sb.AppendLine($"Secrets found:   {secrets.Count} (see SECURITY-SCAN.txt)");
         sb.AppendLine($"Decompiled on:   {DateTime.Now:yyyy-MM-dd HH:mm}");
         File.WriteAllText(Path.Combine(outDir, "GameInfo.txt"), sb.ToString());
     }

@@ -3,22 +3,24 @@ using UnityDecompiler.Core;
 // Command-line version: unity-decompiler <game.exe | game folder | game.zip> [-o output] [--all]
 string? input = null, output = null;
 var includeFramework = false;
+var helpRequested = false;
 for (var i = 0; i < args.Length; i++)
 {
     switch (args[i])
     {
         case "-o" or "--output" when i + 1 < args.Length: output = args[++i]; break;
         case "--all": includeFramework = true; break;
-        case "-h" or "--help": input = null; i = args.Length; break;
+        case "-h" or "--help": helpRequested = true; break;
         default: input ??= args[i]; break;
     }
 }
 
-if (input == null)
+if (helpRequested || input == null)
 {
     Console.WriteLine("Usage: unity-decompiler <game.exe | game folder | game.zip | Assembly.dll> [-o <output folder>] [--all]");
     Console.WriteLine("  --all   also decompile UnityEngine / System assemblies");
-    return 1;
+    Console.WriteLine("Decompiles a Unity game to C# and scans the output for leaked credentials.");
+    return helpRequested ? 0 : 1;
 }
 
 using var cts = new CancellationTokenSource();

@@ -36,6 +36,16 @@ public static class GameLocator
         throw new UnityGameNotFoundException($"Could not find \"{inputPath}\".");
     }
 
+    /// <summary>Builds the "not a Unity game" error, naming the real engine when we can identify it.</summary>
+    private static UnityGameNotFoundException NotUnity(string dir)
+    {
+        var guess = EngineDetector.Identify(dir);
+        if (guess != null)
+            return new UnityGameNotFoundException(guess.Explanation);
+        return new UnityGameNotFoundException(
+            "This does not look like a Unity game: no \"<Game>_Data\" folder (with Managed, il2cpp_data or globalgamemanagers) was found.");
+    }
+
     private static UnityGame FromDll(string dllPath)
     {
         var dir = Path.GetDirectoryName(dllPath)!;
@@ -59,8 +69,7 @@ public static class GameLocator
     private static UnityGame FromDirectory(string dir, string? preferredName, string? exePath)
     {
         var dataDir = FindDataDirectory(dir, preferredName)
-            ?? throw new UnityGameNotFoundException(
-                "This does not look like a Unity game: no \"<Game>_Data\" folder (with Managed, il2cpp_data or globalgamemanagers) was found.");
+            ?? throw NotUnity(dir);
 
         // Root = the folder that holds "<Game>_Data" (on macOS: the folder holding the .app).
         var root = Path.GetDirectoryName(dataDir)!;

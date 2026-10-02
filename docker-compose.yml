@@ -1,0 +1,15 @@
+services:
+  unity-decompiler:
+    build: .
+    ports:
+      - "8080:8080"
+    volumes:
+      - ud-data:/data
+    environment:
+      MAX_UPLOAD_MB: "2048"
+      RETENTION_HOURS: "6"
+      # ACCESS_PASSWORD: "change-me"     # uncomment to require a password
+      # COPY_STREAMING_ASSETS: "true"
+    restart: unless-stopped
+volumes:
+  ud-data:
